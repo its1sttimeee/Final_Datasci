@@ -7,7 +7,6 @@ import shutil
 
 df = pd.read_csv('cv-valid-train.csv')
 df = df.drop(['up_votes','down_votes','duration'], axis=1)
-print(df)
 
 null_rows = df[df.isnull().any(axis=1)]
 

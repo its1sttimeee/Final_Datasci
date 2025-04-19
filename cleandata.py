@@ -66,3 +66,75 @@ print(df_thai)
 
 df_combined = pd.concat([df, df_thai], ignore_index=True)
 print(df_combined.shape)
+
+import pandas as pd
+import librosa
+import numpy as np
+import os
+
+base_path = 'cv-valid-train'
+
+features_audio = []
+features_text = []
+features_age = []
+features_gender = []
+labels = []
+
+for idx, row in df_combined.iterrows():
+    file_path = row['filename']
+
+    try:
+        y, sr = librosa.load(file_path, sr=16000)
+        y = y[:3*sr] if len(y) > 3*sr else np.pad(y, (0, 3*sr - len(y)))
+
+        mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13).T
+        mfcc_flat = mfcc.flatten()
+        features_audio.append(mfcc_flat)
+
+        features_text.append(row['text'])
+        features_age.append(row['age'])
+        features_gender.append(row['gender'])
+        labels.append(row['accent'])
+
+    except Exception as e:
+        print(f"❌ Error processing {file_path}: {e}")
+
+from sklearn.preprocessing import LabelEncoder
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+# ข้อความเป็น TF-IDF
+vectorizer = TfidfVectorizer(max_features=100)
+X_text = vectorizer.fit_transform(features_text).toarray()
+
+# แปลงอายุและเพศเป็นตัวเลข
+le_age = LabelEncoder()
+X_age = le_age.fit_transform(features_age).reshape(-1, 1)
+
+le_gender = LabelEncoder()
+X_gender = le_gender.fit_transform(features_gender).reshape(-1, 1)
+
+# แปลง label สำเนียง
+le_label = LabelEncoder()
+y = le_label.fit_transform(labels)
+
+from sklearn.preprocessing import StandardScaler
+
+X_audio = np.array(features_audio)
+scaler = StandardScaler()
+X_audio_scaled = scaler.fit_transform(X_audio)
+
+# รวม: เสียง + อายุ + เพศ + ข้อความ
+X_full = np.hstack([X_audio_scaled, X_age, X_gender, X_text])
+print("Shape of input:", X_full.shape)
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
+
+X_train, X_test, y_train, y_test = train_test_split(X_full, y, test_size=0.2, random_state=42)
+
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X_train, y_train)
+
+y_pred = model.predict(X_test)
+print(classification_report(y_test, y_pred, target_names=le_label.classes_))
